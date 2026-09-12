@@ -13,6 +13,7 @@ Automação de **patch mensal de segurança (Windows Update)** para servidores W
 - [Por que isso existe](#por-que-isso-existe)
 - [Diferencial: gerenciar Windows a partir de um agente Linux](#diferencial-gerenciar-windows-a-partir-de-um-agente-linux)
 - [Estrutura do repositório](#estrutura-do-repositório)
+- [Setup passo a passo (do zero)](#setup-passo-a-passo-do-zero)
 - [1. Inventário](#1-inventário)
 - [2. Pipeline](#2-pipeline)
 - [3. Playbook (site.yml)](#3-playbook-siteyml)
@@ -60,6 +61,119 @@ ansible-galaxy collection install chocolatey.chocolatey
 ```
 
 ---
+
+## Setup passo a passo (do zero)
+
+Tudo o que precisa existir **fora do código**. Os exemplos usam nomes fictícios — substitua pelos do seu ambiente.
+
+### Passo 1 — Criar a conta de serviço de domínio
+
+Use uma conta dedicada (ex.: `CORP\svc_ansible`), nunca a conta pessoal de um administrador: facilita auditoria e
+permite girar a senha sem depender de uma pessoa. Ela precisa de **direito de administração remota** em cada
+servidor do inventário — normalmente via associação ao grupo local `Administradores` ou `Remote Management Users`.
+
+### Passo 2 — Habilitar o WinRM em cada servidor Windows
+
+No PowerShell **como administrador**, em cada host alvo:
+
+```powershell
+# habilita o WinRM e cria o listener HTTP padrão (porta 5985)
+Enable-PSRemoting -Force
+
+# confirma que o listener existe
+winrm enumerate winrm/config/listener
+
+# confirma a regra de firewall de entrada
+Get-NetFirewallRule -Name "WINRM-HTTP-In-TCP" | Select-Object Enabled, Profile
+```
+
+O agente do CI/CD precisa alcançar a **porta 5985/TCP** desses hosts — valide também regras de firewall de rede
+entre a sub-rede do agente e a dos servidores.
+
+> Para ambientes que exigem tráfego criptografado, use o listener HTTPS na porta 5986 com certificado válido e
+> ajuste `ansible_port` e `ansible_winrm_server_cert_validation` no `group_vars`.
+
+### Passo 3 — Cadastrar os segredos no orquestrador
+
+No Azure DevOps: `Pipelines → Library → + Variable group`, criando um grupo (ex.: `Patch-Mensal-Vars`) com as duas
+variáveis abaixo, ambas marcadas como **secretas** (ícone de cadeado):
+
+| Variável | Conteúdo |
+|---|---|
+| `WINRM_PASSWORD` | Senha da conta de serviço do passo 1 |
+| `GOOGLE_CHAT_WEBHOOK` | URL completa do webhook do canal de chat |
+
+Em **Pipeline permissions**, autorize a pipeline a usar o grupo. O nome do grupo precisa bater com o YAML:
+
+```yaml
+variables:
+- group: Patch-Mensal-Vars   # <-- mesmo nome criado na Library
+```
+
+Marcar como secreta é o que faz o orquestrador **mascarar os valores nos logs**.
+
+### Passo 4 — Criar o webhook de notificação
+
+No Google Chat: `Gerenciar webhooks → Adicionar webhook`, copie a URL e cole no valor da variável secreta
+`GOOGLE_CHAT_WEBHOOK` do passo anterior. A URL nunca é versionada no repositório.
+
+### Passo 5 — Preparar o agente de execução (Linux)
+
+O agente precisa de:
+
+- **`python3` com o módulo `venv`** (pacote `python3-venv` no Debian/Ubuntu);
+- **acesso de saída** ao PyPI (`pip install`) e ao Ansible Galaxy (`ansible-galaxy collection install`);
+- **rota de rede** até a porta 5985 dos servidores Windows.
+
+Não é preciso pré-instalar o Ansible — a própria pipeline monta o ambiente a cada execução (ver
+[Diferencial](#diferencial-gerenciar-windows-a-partir-de-um-agente-linux)).
+
+### Passo 6 — Popular o inventário
+
+Edite `inventory/hosts.yml` adicionando cada servidor sob `windows: hosts:`:
+
+```yaml
+all:
+  children:
+    windows:
+      hosts:
+        winsrv-homolog01:
+          ansible_host: winsrv-homolog01.corp.example.local
+        win-app01:
+          ansible_host: win-app01.corp.example.local
+```
+
+E confira as variáveis de conexão em `inventory/group_vars/windows.yml` — principalmente o domínio da conta:
+
+```yaml
+ansible_user: "CORP\\svc_ansible"   # a barra dupla é o escape de uma barra invertida literal no YAML
+```
+
+### Passo 7 — Validar os pré-requisitos internos dos servidores
+
+O playbook já resolve dois deles automaticamente, mas vale saber que existem:
+
+- **.NET Framework 4.8** — exigido pelo Chocolatey 2.0+. O playbook detecta (release key ≥ 528040) e instala
+  silenciosamente se faltar.
+- **Reboot pendente** — no exemplo, só é verificado e resolvido no host "canário" de homologação; nos demais, um
+  reboot pendente antigo pode travar o Windows Update. Vale generalizar essa checagem se o problema for recorrente
+  na sua frota.
+
+### Passo 8 — Primeira execução controlada
+
+Rode primeiro contra um único host de homologação, usando `--limit` num teste manual ou reduzindo temporariamente
+o inventário. Valide que: a autenticação WinRM funcionou, o Windows Update rodou, e o card chegou no canal. Só
+então libere para produção.
+
+### Checklist final
+
+| Item | Onde vive |
+|---|---|
+| Conta de serviço com admin remoto | Active Directory |
+| WinRM habilitado (5985) | Cada servidor Windows |
+| `WINRM_PASSWORD` e `GOOGLE_CHAT_WEBHOOK` | Variable group secreto do CI/CD (nunca no Git) |
+| Agente Linux com acesso a PyPI/Galaxy e porta 5985 | Pool de agentes self-hosted |
+| Lista de servidores e variáveis de conexão | `inventory/` (versionado, sem senha) |
 
 ## 1. Inventário
 
