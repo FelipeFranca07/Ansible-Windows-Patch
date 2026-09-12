@@ -4,6 +4,8 @@ Automação de **patch mensal de segurança (Windows Update)** para servidores W
 
 > Este repositório documenta o **padrão de arquitetura**, não uma implementação de produção específica. Todos os hostnames, domínios e credenciais abaixo são **exemplos fictícios** — substitua pelos valores reais do seu ambiente.
 
+> ℹ️ O exemplo usa **Azure Pipelines** como orquestrador de CI/CD, mas o padrão é independente de ferramenta — a mesma lógica (agendamento via cron, inventário Ansible, playbook via WinRM, notificação) se aplica igualmente a **GitHub Actions, GitLab CI, Jenkins** ou qualquer outro orquestrador com suporte a agendamento e a um agente (Linux ou Windows) com rede até os servidores gerenciados.
+
 ![Arquitetura](ansible-windows-patch-architecture.png)
 
 ## Índice
