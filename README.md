@@ -1,5 +1,11 @@
 # Ansible Windows Patch Automation
 
+![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat&logo=ansible&logoColor=white)
+![Azure Pipelines](https://img.shields.io/badge/Azure%20Pipelines-0078D7?style=flat&logo=azuredevops&logoColor=white)
+![WinRM](https://img.shields.io/badge/WinRM-0078D6?style=flat&logo=windows&logoColor=white)
+![Windows Server](https://img.shields.io/badge/Windows%20Server-0078D6?style=flat&logo=windows&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 Automação de **patch mensal de segurança (Windows Update)** para servidores Windows, usando **Azure Pipelines** (rodando em um agente Linux self-hosted) para agendamento/execução, **Ansible + WinRM** para orquestração remota, e notificação em formato de card rico no Google Chat.
 
 > Este repositório documenta o **padrão de arquitetura**, não uma implementação de produção específica. Todos os hostnames, domínios e credenciais abaixo são **exemplos fictícios** — substitua pelos valores reais do seu ambiente.
